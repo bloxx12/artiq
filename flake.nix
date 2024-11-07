@@ -59,72 +59,19 @@
         fontconfig
       ];
 
-      pythonparser = pkgs.python3Packages.buildPythonPackage {
-        pname = "pythonparser";
-        version = "1.4";
-        src = src-pythonparser;
-        doCheck = false;
-        propagatedBuildInputs = with pkgs.python3Packages; [ regex ];
+      pythonparser = pkgs.callPackage ./nix/pypythonparser.nix {
+      inherit src-pythonparser;
+        inherit (pkgs.python3Packages) buildPythonPackage regex;
+       };
+
+      qasync = pkgs.callPackage ./nix/qasync.nix {
+        inherit (pkgs.python3Packages) buildPythonPackage poetry-core pyqt6 pytestCheckHook;
       };
 
-      qasync = pkgs.python3Packages.buildPythonPackage rec {
-        pname = "qasync";
-        version = "0.27.1";
-        format = "pyproject";
-        src = pkgs.fetchFromGitHub {
-          owner = "CabbageDevelopment";
-          repo = "qasync";
-          rev = "refs/tags/v${version}";
-          sha256 = "sha256-oXzwilhJ1PhodQpOZjnV9gFuoDy/zXWva9LhhK3T00g=";
-        };
-        postPatch = ''
-          rm qasync/_windows.py # Ignoring it is not taking effect and it will not be used on Linux
-        '';
-        buildInputs = [ pkgs.python3Packages.poetry-core ];
-        propagatedBuildInputs = [ pkgs.python3Packages.pyqt6 ];
-        checkInputs = [ pkgs.python3Packages.pytestCheckHook ];
-        pythonImportsCheck = [ "qasync" ];
-        disabledTestPaths = [ "tests/test_qeventloop.py" ];
-      };
+      libartiq-support = pkgs.callPackage ./nix/lilibartiq-support.nix {inherit rust;};
 
-      libartiq-support = pkgs.stdenv.mkDerivation {
-        name = "libartiq-support";
-        src = self;
-        buildInputs = [ rust ];
-        buildPhase = ''
-          rustc $src/artiq/test/libartiq_support/lib.rs -Cpanic=unwind -g
-        '';
-        installPhase = ''
-          mkdir -p $out/lib $out/bin
-          cp libartiq_support.so $out/lib
-          cat > $out/bin/libartiq-support << EOF
-          #!/bin/sh
-          echo $out/lib/libartiq_support.so
-          EOF
-          chmod 755 $out/bin/libartiq-support
-        '';
-      };
-
-      llvmlite-new = pkgs.python3Packages.buildPythonPackage rec {
-        pname = "llvmlite";
-        version = "0.43.0";
-        src = pkgs.fetchFromGitHub {
-            owner = "numba";
-            repo = "llvmlite";
-            rev = "v${version}";
-            sha256 = "sha256-5QBSRDb28Bui9IOhGofj+c7Rk7J5fNv5nPksEPY/O5o=";
-          };
-        nativeBuildInputs = [ pkgs.llvm_15 ];
-        # Disable static linking
-        # https://github.com/numba/llvmlite/issues/93
-        postPatch = ''
-          substituteInPlace ffi/Makefile.linux --replace "-static-libstdc++" ""
-          substituteInPlace llvmlite/tests/test_binding.py --replace "test_linux" "nope"
-        '';
-        # Set directory containing llvm-config binary
-        preConfigure = ''
-          export LLVM_CONFIG=${pkgs.llvm_15.dev}/bin/llvm-config
-        '';
+      llvmlite-new= pkgs.callPackage ./nix/llvmlite-new.nix {
+        inherit (pkgs.python3Packages) buildPythonPackage;
       };
 
       artiq-upstream = pkgs.python3Packages.buildPythonPackage rec {
@@ -181,42 +128,22 @@
             { patches = map (f: ./experimental-features/${f}.diff) features; });
       };
 
-      migen = pkgs.python3Packages.buildPythonPackage rec {
-        name = "migen";
-        src = src-migen;
-        format = "pyproject";
-        nativeBuildInputs = [ pkgs.python3Packages.setuptools ];
-        propagatedBuildInputs = [ pkgs.python3Packages.colorama ];
+      migen = pkgs.callPackage ./nix/migen.nix {
+        inherit src-migen;
+        inherit (pkgs.python3Packages) buildPythonPackage setuptools colorama;
+      }; 
+
+      asyncserial = pkgs.callPackage ./nix/asasyncserial.nix {
+        inherit (pkgs.python3Packages) buildPythonPackage pyserial;
       };
 
-      asyncserial = pkgs.python3Packages.buildPythonPackage rec {
-        pname = "asyncserial";
-        version = "1.0";
-        src = pkgs.fetchFromGitHub {
-          owner = "m-labs";
-          repo = "asyncserial";
-          rev = version;
-          sha256 = "sha256-ZHzgJnbsDVxVcp09LXq9JZp46+dorgdP8bAiTB59K28=";
-        };
-        propagatedBuildInputs = [ pkgs.python3Packages.pyserial ];
+      misoc = pkgs.callPackage ./nix/misoc.nix {
+        inherit src-misoc;
+        inherit (pkgs.python3Packages) buildPythonPackage jinja2 numpy migen pyserial asyncserial;
       };
 
-      misoc = pkgs.python3Packages.buildPythonPackage {
-        name = "misoc";
-        src = src-misoc;
-        propagatedBuildInputs = with pkgs.python3Packages; [ jinja2 numpy migen pyserial asyncserial ];
-      };
-
-      microscope = pkgs.python3Packages.buildPythonPackage rec {
-        pname = "microscope";
-        version = "unstable-2020-12-28";
-        src = pkgs.fetchFromGitHub {
-          owner = "m-labs";
-          repo = "microscope";
-          rev = "c21afe7a53258f05bde57e5ebf2e2761f3d495e4";
-          sha256 = "sha256-jzyiLRuEf7p8LdhmZvOQj/dyQx8eUE8p6uRlwoiT8vg=";
-        };
-        propagatedBuildInputs = with pkgs.python3Packages; [ pyserial prettytable msgpack migen ];
+      microscope = pkgs.callPackage ./nix/mimicroscope.nix {
+        inherit (pkgs.python3Packages) buildPythonPackage pyserial prettytable msgpack migen;
       };
 
       vivadoEnv = pkgs.buildFHSEnv {
