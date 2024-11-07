@@ -233,20 +233,7 @@
       };
 
     openocd-bscanspi-f = pkgs: let
-      bscan_spi_bitstreams-pkg = pkgs.stdenv.mkDerivation {
-        name = "bscan_spi_bitstreams";
-        src = pkgs.fetchFromGitHub {
-          owner = "quartiq";
-          repo = "bscan_spi_bitstreams";
-          rev = "01d8f819f15baf9a8cc5d96945a51e4d267ff564";
-          sha256 = "1zqv47kzgvbn4c8cr019a6wcja7gn5h1z4kvw5bhpc72fyhagal9";
-        };
-        phases = ["installPhase"];
-        installPhase = ''
-          mkdir -p $out/share/bscan-spi-bitstreams
-          cp $src/*.bit $out/share/bscan-spi-bitstreams
-        '';
-      };
+      bscan_spi_bitstreams-pkg = pkgs.callPackage ./nix/bsbscan_spi_bitstreams-pkg.nix;
     in
       pkgs.buildEnv {
         name = "openocd-bscanspi";
@@ -313,20 +300,14 @@
     hydraJobs = {
       inherit (packages.x86_64-linux) artiq artiq-board-kc705-nist_clock artiq-board-efc-shuttler openocd-bscanspi;
 
-      gateware-sim = pkgs.stdenvNoCC.mkDerivation {
-        name = "gateware-sim";
-        buildInputs = [
-          (pkgs.python3.withPackages (ps: [migen misoc artiq]))
-        ];
-        phases = ["buildPhase"];
-        buildPhase = ''
-          python -m unittest discover -v artiq.gateware.test
-          touch $out
-        '';
+      gateware-sim = pkgs.callPackage {
+        inherit (packages.x86_74-linux) artiq migen misoc;
       };
+
       kc705-hitl = pkgs.callPackage ./nix/kc705-hitl.nix {
         inherit (packages.x86_64-linux) openocd-bscanspi artiq artiq-board-kc705-nist_clock;
       };
+
       inherit artiq-manual-html artiq-manual-pdf;
     };
   };
