@@ -63,10 +63,7 @@
         "artiq-comtools": "artiq-comtools",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay",
-        "sipyco": "sipyco",
-        "src-migen": "src-migen",
-        "src-misoc": "src-misoc",
-        "src-pythonparser": "src-pythonparser"
+        "sipyco": "sipyco"
       }
     },
     "rust-overlay": {
@@ -107,56 +104,6 @@
       "original": {
         "owner": "m-labs",
         "repo": "sipyco",
-        "type": "github"
-      }
-    },
-    "src-migen": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1727677091,
-        "narHash": "sha256-Zg3SQnTwMM/VkOGKogbPyuCC2NhLy8HB2SPEUWWNgCU=",
-        "owner": "m-labs",
-        "repo": "migen",
-        "rev": "c19ae9f8ae162ffe2d310a92bfce53ac2a821bc8",
-        "type": "github"
-      },
-      "original": {
-        "owner": "m-labs",
-        "repo": "migen",
-        "type": "github"
-      }
-    },
-    "src-misoc": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1729234629,
-        "narHash": "sha256-TLsTCXV5AC2xh+bS7EhBVBKqdqIU3eKrnlWcFF9LtAM=",
-        "ref": "refs/heads/master",
-        "rev": "6085a312bca26adeca6584e37d08c8ba2e1d6e38",
-        "revCount": 2460,
-        "submodules": true,
-        "type": "git",
-        "url": "https://github.com/m-labs/misoc.git"
-      },
-      "original": {
-        "submodules": true,
-        "type": "git",
-        "url": "https://github.com/m-labs/misoc.git"
-      }
-    },
-    "src-pythonparser": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1628745371,
-        "narHash": "sha256-p6TgeeaK4NEmbhimEXp31W8hVRo4DgWmcCoqZ+UdN60=",
-        "owner": "m-labs",
-        "repo": "pythonparser",
-        "rev": "5413ee5c9f8760e95c6acd5d6e88dabb831ad201",
-        "type": "github"
-      },
-      "original": {
-        "owner": "m-labs",
-        "repo": "pythonparser",
         "type": "github"
       }
     },
