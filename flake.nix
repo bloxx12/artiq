@@ -1,20 +1,42 @@
 {
   description = "A leading-edge control system for quantum information experiments";
 
-  inputs.nixpkgs.url = github:NixOS/nixpkgs/nixos-unstable;
-  inputs.rust-overlay = {
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+
+    rust-overlay = {
       url = "github:oxalica/rust-overlay?ref=snapshot/2024-08-01";
       inputs.nixpkgs.follows = "nixpkgs";
-  };
-  inputs.sipyco.url = github:m-labs/sipyco;
-  inputs.sipyco.inputs.nixpkgs.follows = "nixpkgs";
-  inputs.src-pythonparser = { url = github:m-labs/pythonparser; flake = false; };
-  inputs.artiq-comtools.url = github:m-labs/artiq-comtools;
-  inputs.artiq-comtools.inputs.nixpkgs.follows = "nixpkgs";
-  inputs.artiq-comtools.inputs.sipyco.follows = "sipyco";
+    };
 
-  inputs.src-migen = { url = github:m-labs/migen; flake = false; };
-  inputs.src-misoc = { type = "git"; url = "https://github.com/m-labs/misoc.git"; submodules = true; flake = false; };
+    artiq-comtools = {
+      url = "github:m-labs/artiq-comtools";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.sipyco.follows = "sipyco";
+    };
+
+    sipyco = {
+      url = "github:m-labs/sipyco";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    src-migen = {
+      url = "github:m-labs/migen";
+      flake = false; 
+    };
+
+    src-misoc = { 
+      url = "https://github.com/m-labs/misoc.git";
+      type = "git";
+      submodules = true; 
+      flake = false;
+    };
+
+    src-pythonparser = {
+      url = "github:m-labs/pythonparser";
+      flake = false;
+    };
+};
 
   outputs = { self, nixpkgs, rust-overlay, sipyco, src-pythonparser, artiq-comtools, src-migen, src-misoc }:
     let
@@ -74,53 +96,13 @@
         inherit (pkgs.python3Packages) buildPythonPackage;
       };
 
-      artiq-upstream = pkgs.python3Packages.buildPythonPackage rec {
-        pname = "artiq";
-        version = artiqVersion;
-        src = self;
+      artiq-upstream = pkgs.callPackage ./nix/artiq-upstream.nix {
+        inherit libartiq-support artiqVersion artiqRev llvmlite-new pythonparser;
 
-        preBuild =
-          ''
-          export VERSIONEER_OVERRIDE=${version}
-          export VERSIONEER_REV=${artiqRev}
-          '';
+        inherit (sipyco.package.x86_64-linux) sipyco;
+        inherit (artiq-comtools.package.x86_64-linux) artiq-comtools;
 
-        nativeBuildInputs = [ pkgs.qt6.wrapQtAppsHook ];
-        # keep llvm_x and lld_x in sync with llvmlite
-        propagatedBuildInputs = [ pkgs.llvm_15 pkgs.lld_15 sipyco.packages.x86_64-linux.sipyco pythonparser llvmlite-new pkgs.qt6.qtsvg artiq-comtools.packages.x86_64-linux.artiq-comtools ]
-          ++ (with pkgs.python3Packages; [ pyqtgraph pygit2 numpy dateutil scipy prettytable pyserial levenshtein h5py pyqt6 qasync tqdm lmdb jsonschema platformdirs ]);
-
-        dontWrapQtApps = true;
-        postFixup = ''
-          wrapQtApp "$out/bin/artiq_dashboard"
-          wrapQtApp "$out/bin/artiq_browser"
-          wrapQtApp "$out/bin/artiq_session"
-        '';
-
-        preFixup =
-          ''
-          # Ensure that wrapProgram uses makeShellWrapper rather than makeBinaryWrapper
-          # brought in by wrapQtAppsHook. Only makeShellWrapper supports --run.
-          wrapProgram() { wrapProgramShell "$@"; }
-          '';
-        ## Modifies PATH to pass the wrapped python environment (i.e. python3.withPackages(...) to subprocesses.
-        ## Allows subprocesses using python to find all packages you have installed
-        makeWrapperArgs = [
-          ''--run 'if [ ! -z "$NIX_PYTHONPREFIX" ]; then export PATH=$NIX_PYTHONPREFIX/bin:$PATH;fi' ''
-          "--set FONTCONFIG_FILE ${pkgs.fontconfig.out}/etc/fonts/fonts.conf"
-        ];
-
-        # FIXME: automatically propagate lld_15 llvm_15 dependencies
-        # cacert is required in the check stage only, as certificates are to be
-        # obtained from system elsewhere
-        nativeCheckInputs = with pkgs; [ lld_15 llvm_15 lit outputcheck cacert ] ++ [ libartiq-support ];
-        checkPhase = ''
-          python -m unittest discover -v artiq.test
-
-          TESTDIR=`mktemp -d`
-          cp --no-preserve=mode,ownership -R $src/artiq/test/lit $TESTDIR
-          LIBARTIQ_SUPPORT=`libartiq-support` lit -v $TESTDIR/lit
-          '';
+        inherit (pkgs.python3Packages) pyqtgraph pygit2 numpy dateutil scipy prettytable pyserial levenshtein h5py pyqt6 qasync tqdm lmdb jsonschema platformdirs;
       };
 
       artiq = artiq-upstream // {
@@ -323,52 +305,22 @@
 
       defaultPackage.x86_64-linux = pkgs.python3.withPackages(ps: [ packages.x86_64-linux.artiq ]);
 
-      # Main development shell with everything you need to develop ARTIQ on Linux.
-      # The current copy of the ARTIQ sources is added to PYTHONPATH so changes can be tested instantly.
-      # Additionally, executable wrappers that import the current ARTIQ sources for the ARTIQ frontends
-      # are added to PATH.
-      devShells.x86_64-linux.default = pkgs.mkShell {
-        name = "artiq-dev-shell";
-        buildInputs = [
-          (pkgs.python3.withPackages(ps: with packages.x86_64-linux; [ migen misoc ps.paramiko microscope ps.packaging ] ++ artiq.propagatedBuildInputs ))
-          rust
-          pkgs.llvmPackages_15.clang-unwrapped
-          pkgs.llvm_15
-          pkgs.lld_15
-          pkgs.git
-          artiq-frontend-dev-wrappers
-          # To manually run compiler tests:
-          pkgs.lit
-          pkgs.outputcheck
-          libartiq-support
-          # use the vivado-env command to enter a FHS shell that lets you run the Vivado installer
-          packages.x86_64-linux.vivadoEnv
-          packages.x86_64-linux.vivado
-          packages.x86_64-linux.openocd-bscanspi
-          pkgs.python3Packages.sphinx pkgs.python3Packages.sphinx_rtd_theme pkgs.pdf2svg
-          pkgs.python3Packages.sphinx-argparse pkgs.python3Packages.sphinxcontrib-wavedrom latex-artiq-manual
-          pkgs.python3Packages.sphinxcontrib-tikz
-        ];
-        shellHook = ''
-          export LIBARTIQ_SUPPORT=`libartiq-support`
-          export QT_PLUGIN_PATH=${pkgs.qt6.qtbase}/${pkgs.qt6.qtbase.dev.qtPluginPrefix}:${pkgs.qt6.qtsvg}/${pkgs.qt6.qtbase.dev.qtPluginPrefix}
-          export QML2_IMPORT_PATH=${pkgs.qt6.qtbase}/${pkgs.qt6.qtbase.dev.qtQmlPrefix}
-          export PYTHONPATH=`git rev-parse --show-toplevel`:$PYTHONPATH
-        '';
-      };
+      devShells.x86_64-linux = {
+        # Main development shell with everything you need to develop ARTIQ on Linux.
+        # The current copy of the ARTIQ sources is added to PYTHONPATH so changes can be tested instantly.
+        # Additionally, executable wrappers that import the current ARTIQ sources for the ARTIQ frontends
+        # are added to PATH.
+        default = pkgs.callPackage ./nix/shell.nix {
+          inherit libartiq-support latex-artiq-manual rust migen misoc microscope artiq artiq-frontend-dev-wrappers;
+          inherit (packages.x86_64-linux) vivadoEnv vivado openocd-bscanspi;
+          inherit (pkgs.python3Packages) sphinx sphinx_rtd_theme sphinx-argparse sphinxcontrib-wavedrom sphinxcontrib-tikz;
+        };
 
-      # Lighter development shell optimized for building firmware and flashing boards.
-      devShells.x86_64-linux.boards = pkgs.mkShell {
-        name = "artiq-boards-shell";
-        buildInputs = [
-          (pkgs.python3.withPackages(ps: with packages.x86_64-linux; [ migen misoc artiq ps.packaging ps.paramiko ]))
-          rust
-          pkgs.llvmPackages_15.clang-unwrapped
-          pkgs.llvm_15
-          pkgs.lld_15
-          packages.x86_64-linux.vivado
-          packages.x86_64-linux.openocd-bscanspi
-        ];
+        # Lighter development shell optimized for building firmware and flashing boards.
+        boards = pkgs.callPackage ./nix/shell.nix {
+          inherit rust; 
+          inherit (packages.x86_64-linux) vivado openocd-bscanspi;
+        };
       };
 
       packages.aarch64-linux = {
