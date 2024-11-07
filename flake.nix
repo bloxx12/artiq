@@ -81,8 +81,8 @@
         fontconfig
       ];
 
-      pythonparser = pkgs.callPackage ./nix/pypythonparser.nix {
-      inherit src-pythonparser;
+      pythonparser = pkgs.callPackage ./nix/pythonparser.nix {
+        # inherit src-pythonparser;
         inherit (pkgs.python3Packages) buildPythonPackage regex;
        };
 
@@ -90,7 +90,7 @@
         inherit (pkgs.python3Packages) buildPythonPackage poetry-core pyqt6 pytestCheckHook;
       };
 
-      libartiq-support = pkgs.callPackage ./nix/lilibartiq-support.nix {inherit rust;};
+      libartiq-support = pkgs.callPackage ./nix/libartiq-support.nix {inherit rust;};
 
       llvmlite-new= pkgs.callPackage ./nix/llvmlite-new.nix {
         inherit (pkgs.python3Packages) buildPythonPackage;
@@ -99,10 +99,10 @@
       artiq-upstream = pkgs.callPackage ./nix/artiq-upstream.nix {
         inherit libartiq-support artiqVersion artiqRev llvmlite-new pythonparser;
 
-        inherit (sipyco.package.x86_64-linux) sipyco;
-        inherit (artiq-comtools.package.x86_64-linux) artiq-comtools;
+        inherit (sipyco.packages.x86_64-linux) sipyco;
+        inherit (artiq-comtools.packages.x86_64-linux) artiq-comtools;
 
-        inherit (pkgs.python3Packages) pyqtgraph pygit2 numpy dateutil scipy prettytable pyserial levenshtein h5py pyqt6 qasync tqdm lmdb jsonschema platformdirs;
+        inherit (pkgs.python3Packages) buildPythonPackage pyqtgraph pygit2 numpy dateutil scipy prettytable pyserial levenshtein h5py pyqt6 qasync tqdm lmdb jsonschema platformdirs;
       };
 
       artiq = artiq-upstream // {
@@ -138,6 +138,25 @@
         targetPkgs = vivadoDeps;
         profile = "set -e; source /opt/Xilinx/Vivado/2022.2/settings64.sh";
         runScript = "vivado";
+      };
+
+      artiq-manual-html = pkgs.callPackage ./nix/atartiq-manual-html.nix {
+        inherit (self) sourceInfo; 
+        inherit artiq-comtools artiqVersion artiq-manual-latex;
+        inherit (pkgs.python3Packages) sphinx sphinx_rtd_theme sphinxcontrib-tikz sphinx-argparse sphinxcontrib-wavedrom;
+      };
+
+      artiq-manual-pdf = pkgs.callPackage ./nix/atartiq-manual-pdf.nix {
+        inherit (self) sourceInfo; 
+        inherit artiq-comtools artiqVersion artiq-manual-latex;
+        inherit (pkgs.python3Packages) sphinx sphinx_rtd_theme sphinxcontrib-tikz sphinx-argparse sphinxcontrib-wavedrom;
+      };
+
+      artiq-manual-latex = pkgs.texlive.combine {
+        inherit (pkgs.texlive)
+          scheme-basic latexmk cmap collection-fontsrecommended fncychap
+          titlesec tabulary varwidth framed fancyvrb float wrapfig parskip
+          upquote capt-of needspace etoolbox booktabs pgf pgfplots;
       };
 
       makeArtiqBoardPackage = { target, variant, buildCommand ? "python -m artiq.gateware.targets.${target} -V ${variant}", experimentalFeatures ? [] }:
@@ -220,12 +239,6 @@
         paths = [ pkgs.openocd bscan_spi_bitstreams-pkg ];
       };
 
-      latex-artiq-manual = pkgs.texlive.combine {
-        inherit (pkgs.texlive)
-          scheme-basic latexmk cmap collection-fontsrecommended fncychap
-          titlesec tabulary varwidth framed fancyvrb float wrapfig parskip
-          upquote capt-of needspace etoolbox booktabs pgf pgfplots;
-      };
 
       artiq-frontend-dev-wrappers = pkgs.runCommandNoCC "artiq-frontend-dev-wrappers" {}
         ''
@@ -242,8 +255,11 @@
         '';
     in rec {
       packages.x86_64-linux = {
+        default = pkgs.python3.withPackages(ps: [artiq]);
         inherit pythonparser qasync artiq;
         inherit migen misoc asyncserial microscope vivadoEnv vivado;
+        inherit artiq-manual-latex artiq-manual-html artiq-manual-pdf;
+
         openocd-bscanspi = openocd-bscanspi-f pkgs;
         artiq-board-kc705-nist_clock = makeArtiqBoardPackage {
           target = "kc705";
@@ -253,57 +269,9 @@
           target = "efc";
           variant = "shuttler";
         };
-        inherit latex-artiq-manual;
-        artiq-manual-html = pkgs.stdenvNoCC.mkDerivation rec {
-          name = "artiq-manual-html-${version}";
-          version = artiqVersion;
-          src = self;
-          buildInputs = with pkgs.python3Packages; [
-            sphinx sphinx_rtd_theme sphinxcontrib-tikz
-            sphinx-argparse sphinxcontrib-wavedrom
-          ] ++ [ latex-artiq-manual artiq-comtools.packages.x86_64-linux.artiq-comtools
-            pkgs.pdf2svg
-          ];
-          buildPhase = ''
-            export VERSIONEER_OVERRIDE=${artiqVersion}
-            export SOURCE_DATE_EPOCH=${builtins.toString self.sourceInfo.lastModified}
-            cd doc/manual
-            make html
-          '';
-          installPhase = ''
-            cp -r _build/html $out
-            mkdir $out/nix-support
-            echo doc manual $out index.html >> $out/nix-support/hydra-build-products
-          '';
-        };
-        artiq-manual-pdf = pkgs.stdenvNoCC.mkDerivation rec {
-          name = "artiq-manual-pdf-${version}";
-          version = artiqVersion;
-          src = self;
-          buildInputs = with pkgs.python3Packages; [
-            sphinx sphinx_rtd_theme sphinxcontrib-tikz
-            sphinx-argparse sphinxcontrib-wavedrom
-          ] ++ [ latex-artiq-manual artiq-comtools.packages.x86_64-linux.artiq-comtools
-            pkgs.pdf2svg
-          ];
-          buildPhase = ''
-            export VERSIONEER_OVERRIDE=${artiq.version}
-            export SOURCE_DATE_EPOCH=${builtins.toString self.sourceInfo.lastModified}
-            cd doc/manual
-            make latexpdf
-          '';
-          installPhase = ''
-            mkdir $out
-            cp _build/latex/ARTIQ.pdf $out
-            mkdir $out/nix-support
-            echo doc-pdf manual $out ARTIQ.pdf >> $out/nix-support/hydra-build-products
-          '';
-        };
       };
 
       inherit makeArtiqBoardPackage openocd-bscanspi-f;
-
-      defaultPackage.x86_64-linux = pkgs.python3.withPackages(ps: [ packages.x86_64-linux.artiq ]);
 
       devShells.x86_64-linux = {
         # Main development shell with everything you need to develop ARTIQ on Linux.
@@ -311,7 +279,7 @@
         # Additionally, executable wrappers that import the current ARTIQ sources for the ARTIQ frontends
         # are added to PATH.
         default = pkgs.callPackage ./nix/shell.nix {
-          inherit libartiq-support latex-artiq-manual rust migen misoc microscope artiq artiq-frontend-dev-wrappers;
+          inherit libartiq-support artiq-manual-latex rust migen misoc microscope artiq artiq-frontend-dev-wrappers;
           inherit (packages.x86_64-linux) vivadoEnv vivado openocd-bscanspi;
           inherit (pkgs.python3Packages) sphinx sphinx_rtd_theme sphinx-argparse sphinxcontrib-wavedrom sphinxcontrib-tikz;
         };
@@ -332,7 +300,7 @@
         gateware-sim = pkgs.stdenvNoCC.mkDerivation {
           name = "gateware-sim";
           buildInputs = [
-            (pkgs.python3.withPackages(ps: with packages.x86_64-linux; [ migen misoc artiq ]))
+            (pkgs.python3.withPackages(ps: [ migen misoc artiq ]))
           ];
           phases = [ "buildPhase" ];
           buildPhase =
@@ -349,7 +317,7 @@
           #__impure = true;     # Nix 2.8+
 
           buildInputs = [
-            (pkgs.python3.withPackages(ps: with packages.x86_64-linux; [
+            (pkgs.python3.withPackages(ps:  [
               artiq
               ps.paramiko
             ] ++ ps.paramiko.optional-dependencies.ed25519
@@ -397,7 +365,7 @@
             touch $out
             '';
         };
-        inherit (packages.x86_64-linux) artiq-manual-html artiq-manual-pdf;
+        inherit artiq-manual-html artiq-manual-pdf;
       };
     };
 
