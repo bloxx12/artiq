@@ -28,6 +28,7 @@
 }:
 mkShell {
   name = "artiq-dev-shell";
+
   buildInputs = [
     (python3.withPackages (ps:
       [
@@ -60,6 +61,7 @@ mkShell {
     vivado
     vivadoEnv
   ];
+
   shellHook = let
     inherit (qt6) qtbase qtsvg;
     inherit (qt6.qtbase.dev) qtPluginPrefix qtQmlPrefix;

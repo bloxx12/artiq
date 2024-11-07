@@ -13,6 +13,7 @@
 }:
 mkShell {
   name = "artiq-boards-shell";
+
   buildInputs = [
     (python3.withPackages (ps: [migen misoc artiq ps.packaging ps.paramiko]))
 
