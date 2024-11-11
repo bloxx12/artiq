@@ -340,6 +340,53 @@
           upquote capt-of needspace etoolbox booktabs pgf pgfplots;
       };
 
+      artiq-manual-html = pkgs.stdenvNoCC.mkDerivation rec {
+        name = "artiq-manual-html-${version}";
+        version = artiqVersion;
+        src = self;
+        buildInputs = with pkgs.python3Packages; [
+          sphinx sphinx_rtd_theme sphinxcontrib-tikz
+          sphinx-argparse sphinxcontrib-wavedrom
+        ] ++ [ latex-artiq-manual artiq-comtools.packages.x86_64-linux.artiq-comtools
+          pkgs.pdf2svg
+        ];
+        buildPhase = ''
+          export VERSIONEER_OVERRIDE=${artiqVersion}
+          export SOURCE_DATE_EPOCH=${builtins.toString self.sourceInfo.lastModified}
+          cd doc/manual
+          make html
+        '';
+        installPhase = ''
+          cp -r _build/html $out
+          mkdir $out/nix-support
+          echo doc manual $out index.html >> $out/nix-support/hydra-build-products
+        '';
+      };
+
+      artiq-manual-pdf = pkgs.stdenvNoCC.mkDerivation rec {
+        name = "artiq-manual-pdf-${version}";
+        version = artiqVersion;
+        src = self;
+        buildInputs = with pkgs.python3Packages; [
+          sphinx sphinx_rtd_theme sphinxcontrib-tikz
+          sphinx-argparse sphinxcontrib-wavedrom
+        ] ++ [ latex-artiq-manual artiq-comtools.packages.x86_64-linux.artiq-comtools
+          pkgs.pdf2svg
+        ];
+        buildPhase = ''
+          export VERSIONEER_OVERRIDE=${artiq.version}
+          export SOURCE_DATE_EPOCH=${builtins.toString self.sourceInfo.lastModified}
+          cd doc/manual
+          make latexpdf
+        '';
+        installPhase = ''
+          mkdir $out
+          cp _build/latex/ARTIQ.pdf $out
+          mkdir $out/nix-support
+          echo doc-pdf manual $out ARTIQ.pdf >> $out/nix-support/hydra-build-products
+        '';
+      };
+
       artiq-frontend-dev-wrappers = pkgs.runCommandNoCC "artiq-frontend-dev-wrappers" {}
         ''
         mkdir -p $out/bin
@@ -366,52 +413,8 @@
           target = "efc";
           variant = "shuttler";
         };
-        inherit latex-artiq-manual;
-        artiq-manual-html = pkgs.stdenvNoCC.mkDerivation rec {
-          name = "artiq-manual-html-${version}";
-          version = artiqVersion;
-          src = self;
-          buildInputs = with pkgs.python3Packages; [
-            sphinx sphinx_rtd_theme sphinxcontrib-tikz
-            sphinx-argparse sphinxcontrib-wavedrom
-          ] ++ [ latex-artiq-manual artiq-comtools.packages.x86_64-linux.artiq-comtools
-            pkgs.pdf2svg
-          ];
-          buildPhase = ''
-            export VERSIONEER_OVERRIDE=${artiqVersion}
-            export SOURCE_DATE_EPOCH=${builtins.toString self.sourceInfo.lastModified}
-            cd doc/manual
-            make html
-          '';
-          installPhase = ''
-            cp -r _build/html $out
-            mkdir $out/nix-support
-            echo doc manual $out index.html >> $out/nix-support/hydra-build-products
-          '';
-        };
-        artiq-manual-pdf = pkgs.stdenvNoCC.mkDerivation rec {
-          name = "artiq-manual-pdf-${version}";
-          version = artiqVersion;
-          src = self;
-          buildInputs = with pkgs.python3Packages; [
-            sphinx sphinx_rtd_theme sphinxcontrib-tikz
-            sphinx-argparse sphinxcontrib-wavedrom
-          ] ++ [ latex-artiq-manual artiq-comtools.packages.x86_64-linux.artiq-comtools
-            pkgs.pdf2svg
-          ];
-          buildPhase = ''
-            export VERSIONEER_OVERRIDE=${artiq.version}
-            export SOURCE_DATE_EPOCH=${builtins.toString self.sourceInfo.lastModified}
-            cd doc/manual
-            make latexpdf
-          '';
-          installPhase = ''
-            mkdir $out
-            cp _build/latex/ARTIQ.pdf $out
-            mkdir $out/nix-support
-            echo doc-pdf manual $out ARTIQ.pdf >> $out/nix-support/hydra-build-products
-          '';
-        };
+
+        inherit artiq-manual-html artiq-manual-pdf latex-artiq-manual;
       };
 
       inherit makeArtiqBoardPackage openocd-bscanspi-f;
