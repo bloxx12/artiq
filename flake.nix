@@ -38,16 +38,17 @@
     };
   };
 
-  outputs = { self, nixpkgs, rust-overlay, sipyco, src-pythonparser, artiq-comtools, src-migen, src-misoc }:
+  outputs = inputs:
     let
-      pkgs = import nixpkgs { system = "x86_64-linux"; overlays = [ (import rust-overlay) ]; };
-      pkgs-aarch64 = import nixpkgs { system = "aarch64-linux"; };
+      inherit (inputs.self) sourceInfo;
+      pkgs = import inputs.nixpkgs { system = "x86_64-linux"; overlays = [ (import inputs.rust-overlay) ]; };
+      pkgs-aarch64 = import inputs.nixpkgs { system = "aarch64-linux"; };
 
       artiqVersionMajor = 9;
-      artiqVersionMinor = self.sourceInfo.revCount or 0;
-      artiqVersionId = self.sourceInfo.shortRev or "unknown";
+      artiqVersionMinor = sourceInfo.revCount or 0;
+      artiqVersionId = sourceInfo.shortRev or "unknown";
       artiqVersion = (builtins.toString artiqVersionMajor) + "." + (builtins.toString artiqVersionMinor) + "+" + artiqVersionId + ".beta";
-      artiqRev = self.sourceInfo.rev or "unknown";
+      artiqRev = sourceInfo.rev or "unknown";
 
       qtPaths = let 
         inherit (pkgs.qt6) qtbase qtsvg;
@@ -92,7 +93,7 @@
       pythonparser = pkgs.python3Packages.buildPythonPackage {
         pname = "pythonparser";
         version = "1.4";
-        src = src-pythonparser;
+        src = inputs.src-pythonparser;
         doCheck = false;
         propagatedBuildInputs = with pkgs.python3Packages; [ regex ];
       };
@@ -119,7 +120,7 @@
 
       libartiq-support = pkgs.stdenv.mkDerivation {
         name = "libartiq-support";
-        src = self;
+        src = ./.;
         buildInputs = [ rust ];
         buildPhase = ''
           rustc $src/artiq/test/libartiq_support/lib.rs -Cpanic=unwind -g
@@ -160,7 +161,7 @@
       artiq-upstream = pkgs.python3Packages.buildPythonPackage rec {
         pname = "artiq";
         version = artiqVersion;
-        src = self;
+        src = ./.;
 
         preBuild =
           ''
@@ -170,7 +171,7 @@
 
         nativeBuildInputs = [ pkgs.qt6.wrapQtAppsHook ];
         # keep llvm_x and lld_x in sync with llvmlite
-        propagatedBuildInputs = [ pkgs.llvm_15 pkgs.lld_15 sipyco.packages.x86_64-linux.sipyco pythonparser llvmlite-new pkgs.qt6.qtsvg artiq-comtools.packages.x86_64-linux.artiq-comtools ]
+        propagatedBuildInputs = [ pkgs.llvm_15 pkgs.lld_15 inputs.sipyco.packages.x86_64-linux.sipyco pythonparser llvmlite-new pkgs.qt6.qtsvg inputs.artiq-comtools.packages.x86_64-linux.artiq-comtools ]
           ++ (with pkgs.python3Packages; [ pyqtgraph pygit2 numpy dateutil scipy prettytable pyserial levenshtein h5py pyqt6 qasync tqdm lmdb jsonschema platformdirs ]);
 
         dontWrapQtApps = true;
@@ -213,7 +214,7 @@
 
       migen = pkgs.python3Packages.buildPythonPackage rec {
         name = "migen";
-        src = src-migen;
+        src = inputs.src-migen;
         format = "pyproject";
         nativeBuildInputs = [ pkgs.python3Packages.setuptools ];
         propagatedBuildInputs = [ pkgs.python3Packages.colorama ];
@@ -233,7 +234,7 @@
 
       misoc = pkgs.python3Packages.buildPythonPackage {
         name = "misoc";
-        src = src-misoc;
+        src = inputs.src-misoc;
         propagatedBuildInputs = with pkgs.python3Packages; [ jinja2 numpy migen pyserial asyncserial ];
       };
 
@@ -351,7 +352,7 @@
       artiq-frontend-dev-wrappers = pkgs.runCommandNoCC "artiq-frontend-dev-wrappers" {}
         ''
         mkdir -p $out/bin
-        for program in ${self}/artiq/frontend/*.py; do
+        for program in ${./.}/artiq/frontend/*.py; do
           if [ -x $program ]; then
             progname=`basename -s .py $program`
             outname=$out/bin/$progname
@@ -378,7 +379,7 @@
         artiq-manual-html = pkgs.stdenvNoCC.mkDerivation rec {
           name = "artiq-manual-html-${version}";
           version = artiqVersion;
-          src = self;
+          src = ./.;
           buildInputs = with pkgs.python3Packages; [
             sphinx sphinx_rtd_theme sphinxcontrib-tikz
             sphinx-argparse sphinxcontrib-wavedrom
@@ -387,7 +388,7 @@
           ];
           buildPhase = ''
             export VERSIONEER_OVERRIDE=${artiqVersion}
-            export SOURCE_DATE_EPOCH=${builtins.toString self.sourceInfo.lastModified}
+            export SOURCE_DATE_EPOCH=${builtins.toString sourceInfo.lastModified}
             cd doc/manual
             make html
           '';
@@ -400,7 +401,7 @@
         artiq-manual-pdf = pkgs.stdenvNoCC.mkDerivation rec {
           name = "artiq-manual-pdf-${version}";
           version = artiqVersion;
-          src = self;
+          src = ./.;
           buildInputs = with pkgs.python3Packages; [
             sphinx sphinx_rtd_theme sphinxcontrib-tikz
             sphinx-argparse sphinxcontrib-wavedrom
@@ -409,7 +410,7 @@
           ];
           buildPhase = ''
             export VERSIONEER_OVERRIDE=${artiq.version}
-            export SOURCE_DATE_EPOCH=${builtins.toString self.sourceInfo.lastModified}
+            export SOURCE_DATE_EPOCH=${builtins.toString sourceInfo.lastModified}
             cd doc/manual
             make latexpdf
           '';
