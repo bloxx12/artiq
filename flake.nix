@@ -381,6 +381,65 @@
         ;
     };
 
+    makeArtiqManual = buildType:
+      assert pkgs.lib.assertOneOf "buildType" buildType ["html" "pdf"]; let
+        inherit (pkgs.lib) concatStringsSep;
+        variants = {
+          html = {
+            target = "html";
+            result = "html";
+            build-products = concatStringsSep " " [
+              "doc"
+              "manual"
+              "index.html"
+            ];
+          };
+          pdf = {
+            target = "latexpdf";
+            result = "latex/ARTIQ.pdf";
+            build-products = concatStringsSep " " [
+              "doc-pdf"
+              "manual"
+              "ARTIQ.pdf"
+            ];
+          };
+        };
+        type = variants.${buildType};
+      in
+        pkgs.stdenvNoCC.mkDerivation rec {
+          name = "artiq-manual-${buildType}-${version}";
+          version = artiqVersion;
+          src = self;
+          buildInputs = with pkgs.python3Packages;
+            [
+              sphinx
+              sphinx_rtd_theme
+              sphinxcontrib-tikz
+              sphinx-argparse
+              sphinxcontrib-wavedrom
+            ]
+            ++ [
+              latex-artiq-manual
+              artiq-comtools.packages.x86_64-linux.artiq-comtools
+              pkgs.pdf2svg
+            ];
+          buildPhase = ''
+            export VERSIONEER_OVERRIDE=${artiqVersion}
+            export SOURCE_DATE_EPOCH=${builtins.toString self.sourceInfo.lastModified}
+            cd doc/manual
+            make ${type.target}
+          '';
+          installPhase = ''
+            mkdir $out
+            cp -r _build/${type.result} $out
+            mkdir $out/nix-support
+            echo ${type.build-products} $out  >> $out/nix-support/hydra-build-products
+          '';
+        };
+
+    artiq-manual-html = makeArtiqManual "html";
+    artiq-manual-pdf = makeArtiqManual "pdf";
+
     artiq-frontend-dev-wrappers =
       pkgs.runCommandNoCC "artiq-frontend-dev-wrappers" {}
       ''
@@ -397,9 +456,14 @@
       '';
   in rec {
     packages.x86_64-linux = {
+      default = pkgs.python3.withPackages (_: [self.packages.x86_64-linux.artiq]);
+
       inherit pythonparser qasync artiq;
       inherit migen misoc asyncserial microscope vivadoEnv vivado;
+      inherit latex-artiq-manual artiq-manual-html artiq-manual-pdf;
+
       openocd-bscanspi = openocd-bscanspi-f pkgs;
+
       artiq-board-kc705-nist_clock = makeArtiqBoardPackage {
         target = "kc705";
         variant = "nist_clock";
@@ -408,71 +472,9 @@
         target = "efc";
         variant = "shuttler";
       };
-      inherit latex-artiq-manual;
-      artiq-manual-html = pkgs.stdenvNoCC.mkDerivation rec {
-        name = "artiq-manual-html-${version}";
-        version = artiqVersion;
-        src = self;
-        buildInputs = with pkgs.python3Packages;
-          [
-            sphinx
-            sphinx_rtd_theme
-            sphinxcontrib-tikz
-            sphinx-argparse
-            sphinxcontrib-wavedrom
-          ]
-          ++ [
-            latex-artiq-manual
-            artiq-comtools.packages.x86_64-linux.artiq-comtools
-            pkgs.pdf2svg
-          ];
-        buildPhase = ''
-          export VERSIONEER_OVERRIDE=${artiqVersion}
-          export SOURCE_DATE_EPOCH=${builtins.toString self.sourceInfo.lastModified}
-          cd doc/manual
-          make html
-        '';
-        installPhase = ''
-          cp -r _build/html $out
-          mkdir $out/nix-support
-          echo doc manual $out index.html >> $out/nix-support/hydra-build-products
-        '';
-      };
-      artiq-manual-pdf = pkgs.stdenvNoCC.mkDerivation rec {
-        name = "artiq-manual-pdf-${version}";
-        version = artiqVersion;
-        src = self;
-        buildInputs = with pkgs.python3Packages;
-          [
-            sphinx
-            sphinx_rtd_theme
-            sphinxcontrib-tikz
-            sphinx-argparse
-            sphinxcontrib-wavedrom
-          ]
-          ++ [
-            latex-artiq-manual
-            artiq-comtools.packages.x86_64-linux.artiq-comtools
-            pkgs.pdf2svg
-          ];
-        buildPhase = ''
-          export VERSIONEER_OVERRIDE=${artiq.version}
-          export SOURCE_DATE_EPOCH=${builtins.toString self.sourceInfo.lastModified}
-          cd doc/manual
-          make latexpdf
-        '';
-        installPhase = ''
-          mkdir $out
-          cp _build/latex/ARTIQ.pdf $out
-          mkdir $out/nix-support
-          echo doc-pdf manual $out ARTIQ.pdf >> $out/nix-support/hydra-build-products
-        '';
-      };
     };
 
     inherit qtPaths makeArtiqBoardPackage openocd-bscanspi-f;
-
-    packages.x86_64-linux.default = pkgs.python3.withPackages (_: [packages.x86_64-linux.artiq]);
 
     formatter.x86_64-linux = pkgs.alejandra;
 
